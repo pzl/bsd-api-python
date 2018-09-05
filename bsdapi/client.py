@@ -48,24 +48,30 @@ class BsdApiClient(object):
             auth=BsdApiAuth(self.api_id, self.api_secret)
         )
 
-        return self._resolve_deferred_response(response, self.deferred_result_max_attempts)
+        if response.status_code == 202 and endpoint != "get_deferred_results":
+            return self._resolve_deferred_response(response, self.deferred_result_max_attempts)
+        else:
+            return response
 
-    def _resolve_deferred_response(self, response, remaining):
+    def _resolve_deferred_response(self, response, remaining, deferred_id=None):
         """Polls the BSD API for a deferred result
 
         :param response:
         :param remaining:
+        :param deferred_id: (optional)
         :return: The next deferred :class:`Response <Response>`
         :rtype: requests.Response
         """
         if remaining == 0:
-            raise RuntimeError("Failed to resolve deferred response.")
+            raise DeferredError("Failed to resolve deferred response.")
 
         if response.status_code == 202 and self.block_on_deferred_response:
+            deferred_id = deferred_id or response.text
             sleep(self.deferred_poll_interval)
             return self._resolve_deferred_response(
-                self.get('get_deferred_results', {'deferred_id': response.text}),
-                remaining-1
+                self.get('get_deferred_results', {'deferred_id': deferred_id}),
+                remaining-1,
+                deferred_id
             )
 
         return response
@@ -115,3 +121,7 @@ class BsdApiClient(object):
         """
 
         return self._call(requests.delete, endpoint, params=params)
+
+class DeferredError(Exception):
+    pass
+        
